@@ -1,0 +1,13 @@
+[Unit]
+Description=Kurage 法案AIインタビュー (khouan, 0.0.0.0:18395)
+After=network.target
+
+[Service]
+WorkingDirectory=/home/kojima/work/khouan
+ExecStart=/home/kojima/work/khouan/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 18395
+Restart=always
+RestartSec=3
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

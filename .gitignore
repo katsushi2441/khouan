@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.bak
+data/*.sqlite
+data/*.sqlite-*
+outputs/
+php/khouan_config.php
