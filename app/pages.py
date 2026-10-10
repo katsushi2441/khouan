@@ -18,6 +18,7 @@ GITHUB = "https://github.com/katsushi2441/khouan"
 GIIN = "https://xb4g.com/giin"
 KRONTEN = "https://kurage.exbridge.jp/kronten.php/"
 KCONSENSUS = "https://kurage.exbridge.jp/kconsensus.php/"
+STORE = "https://kappstore.exbridge.jp/app.php?id=b80a258f26c448d5#ref=khouan-store"   # 自社のサーバーに置く版（Kurage App Store）
 
 
 def h(s) -> str:
@@ -151,7 +152,7 @@ def page(title: str, desc: str, path: str, body: str, *, crumbs=None, jsonld=Non
 <footer class="ft">{NAME}は、株式会社エクスブリッジ（名古屋）が開発しているシステムです。
 法案の説明は<a href="{GIIN}/#ref=khouan">愛知の国会議員 発言ログ</a>の法案ページ（参議院の議案情報・国会会議録検索システム）から、
 意見のまとめと話題の名前は当社のサーバーの生成AI（gemma4）で作っています。外部のAIサービスには送っていません。
-<a href="{BASE}/about">このシステムについて</a>　<a href="{GITHUB}">GitHub（MIT）</a></footer>
+<a href="{BASE}/about">このシステムについて</a>　<a href="{GITHUB}">GitHub（MIT）</a>　<a href="{STORE}">導入する（Kurage App Store）</a></footer>
 {script}
 </body></html>"""
 
@@ -198,7 +199,7 @@ def index(bills: list[dict], q: str = "") -> str:
 <section class="card"><h2>よくある質問</h2><dl class="faq">{faq}</dl></section>
 <section class="card"><h2>議員事務所・自治体・団体で使う</h2>
 <p>パブリックコメントや住民アンケート、条例案への意見募集を、同じしくみで行えます。意見の聞き取りから、話題のまとめ、合意点の発見までを、自社のサーバーの中だけで動かせます（外部のAIサービスに送りません）。</p>
-<a class="btn o" href="{GITHUB}">GitHub（MIT）でソースを見る</a></section>"""
+<div class="row"><a class="btn" href="{STORE}">導入する（Kurage App Store）</a><a class="btn o" href="{GITHUB}">GitHub（MIT）でソースを見る</a></div></section>"""
     return page("法案への意見をAIインタビューで｜審議中の法案（第222回国会）",
                 "いまの国会で審議中の法案を国会の公開情報から解説し、AIインタビューで意見を聞きます。公開に同意された意見を法案ごとに話題に束ね、合意形成AIで割れ方と一致点を出します。ログイン不要。",
                 "/", body, jsonld=[{"@type": "FAQPage", "mainEntity": [
@@ -420,7 +421,7 @@ def about_page(n_bills: int) -> str:
 <section class="card"><h2>使っている技術</h2>
 <p>生成AIは当社のサーバーの gemma4（Ollama）。埋め込みは multilingual-e5-large（手元のCPU）。外部のAIサービスには送りません。画面と API は FastAPI、データは SQLite です。</p>
 <p>API（読み取り専用）：<code>{BASE}/api/bill/&lt;法案ID&gt;/summary</code>（公開された意見の件数・話題ごとの件数と代表的な意見・合意形成AIのページ）</p>
-<p>ソースコード：<a href="{GITHUB}">GitHub</a>（MIT）</p></section>"""
+<p>ソースコード：<a href="{GITHUB}">GitHub</a>（MIT）。自社のサーバーに置いて使う版は <a href="{STORE}">Kurage App Store</a> にあります。</p></section>"""
     return page("法案AIインタビューのしくみ｜Kurage",
                 "国会で審議中の法案の解説、AIインタビューでの意見の聞き取り、意見の話題へのまとめ、合意形成AIでの合意点の発見までを、自社のサーバーの生成AIで行うシステムの説明です。",
                 "/about", body, crumbs=[(NAME, f"{BASE}/"), ("このシステムについて", f"{BASE}/about")])
