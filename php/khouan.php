@@ -55,7 +55,8 @@ foreach (explode("\r\n", substr($res, 0, $hsize)) as $h) {
     }
 }
 $body = substr($res, $hsize);
-if ($isHtml) {
+// アクセス計測と共通ヘッダー（partner-bar.js）は当社の公開先でだけ入れる。導入先のサーバーから当社へ通信させない
+if ($isHtml && isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_HOST'] === 'kurage.exbridge.jp') {
     $tag = '<script>(function(){var s=document.createElement("script");s.src="https://kurage.exbridge.jp/simpletrack.php?url="+encodeURIComponent(location.href)+"&ref="+encodeURIComponent(document.referrer);s.async=true;document.head.appendChild(s)})();</script>';
     $body = str_replace('</head>', $tag . '<script src="https://kurage.exbridge.jp/partner-bar.js" defer></script></head>', $body);
 }
