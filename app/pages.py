@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import os
 
 BASE = os.environ.get("KHOUAN_PUBLIC_BASE", "https://kurage.exbridge.jp/khouan.php").rstrip("/")
@@ -109,6 +110,19 @@ footer.ft{max-width:880px;margin:0 auto;padding:0 16px 40px;color:var(--mut);fon
 .choice label{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:15px}
 .choice input{margin-top:6px;flex:none}
 .hide{display:none}
+/* 条文と修正の提案 */
+.arts{display:grid;gap:8px;margin:8px 0}
+.art{display:grid;grid-template-columns:1fr auto;gap:2px 10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;color:var(--ink);text-decoration:none}
+.art b{font-size:15px;grid-column:1} .art .t{grid-column:1;font-size:13px;color:var(--mut)}
+.art .n{grid-column:2;grid-row:1/3;align-self:center;font-size:12.5px;font-weight:800;color:#0a726b;background:var(--teal2);border-radius:99px;padding:2px 10px;white-space:nowrap}
+.art:hover{border-color:var(--teal)}
+.jobun{background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:12px 16px;white-space:pre-wrap;font-size:15px;line-height:1.9}
+.am{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff}
+.am .k{font-size:12px;font-weight:800;color:#0a726b} .am .s{background:#f3faf9;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:14px}
+.form label.l{display:block;font-weight:800;font-size:14px;margin:12px 0 4px}
+.form textarea,.form input[type=text]{width:100%;font-size:16px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;line-height:1.7}
+.form select{font-size:16px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-family:inherit}
+.sug{background:#f3faf9;border:1px solid #bfe3de;border-radius:12px;padding:10px 14px;margin:10px 0}
 @media(max-width:560px){.hero img.m{width:64px}.msg{max-width:94%}.tl th{width:6.8em}}
 """
 
@@ -150,7 +164,7 @@ def page(title: str, desc: str, path: str, body: str, *, crumbs=None, jsonld=Non
 <header class="top"><div class="hd"><a href="{BASE}/"><img src="{LOGO}" width="34" height="34" alt="株式会社エクスブリッジ">{NAME}</a></div></header>
 <main class="wrap">{cr}{body}</main>
 <footer class="ft">{NAME}は、株式会社エクスブリッジ（名古屋）が開発しているシステムです。
-法案の説明は<a href="{GIIN}/#ref=khouan">愛知の国会議員 発言ログ</a>の法案ページ（参議院の議案情報・国会会議録検索システム）から、
+法案の説明は<a href="{GIIN}/#ref=khouan">国会議員 発言ログ</a>の法案ページ（参議院の議案情報・国会会議録検索システム）から、
 意見のまとめと話題の名前は当社のサーバーの生成AI（gemma4）で作っています。外部のAIサービスには送っていません。
 <a href="{BASE}/about">このシステムについて</a>　<a href="{GITHUB}">GitHub（MIT）</a>　<a href="{STORE}">導入する（Kurage App Store）</a></footer>
 {script}
@@ -224,8 +238,26 @@ def topics_block(b: dict, topics: list[dict], recent: list[dict], n_public: int)
     return '<p>まだ公開された意見はありません。最初の意見を伝えてみませんか。</p>'
 
 
+def articles_block(b: dict, arts: list[dict]) -> str:
+    """条文と修正の提案（2026-10-15〜）。条ごとに見出し・冒頭・公開された提案の件数"""
+    bid = b["id"]
+    if not arts:
+        pdf = f'<a href="{h(b["text_url"])}" rel="nofollow noopener" target="_blank">法律案の本文（PDF）</a>' if b.get("text_url") else "法律案の本文"
+        return (f'<p class="note">この法案は参議院に提出されたもので、本文が縦書きのPDFしか公開されていないため、条ごとに取り込めていません。'
+                f'条文は{pdf}でご覧ください。修正の提案は、上の「AIインタビュー」の「提案」の質問でお伝えください。</p>')
+    n = sum(a["n_public"] for a in arts)
+    rows = "".join(
+        f'<a class="art" href="{BASE}/b/{h(bid)}/a/{a["ord"]}"><b>{h(a["label"])}{h(a["heading"] or "")}</b>'
+        f'<span class="t">{h(re.sub(r"^第[^　]+条　", "", a["text"])[:70])}…</span>'
+        f'<span class="n">{("提案 " + str(a["n_public"]) + "件") if a["n_public"] else "提案する"}</span></a>' for a in arts)
+    return (f'<p>条ごとに、「この語句をこう改めてほしい」「この部分は削ってほしい」という修正の提案を出せます。'
+            f'書いた要望を、AIが「第◯条中「A」を「B」に改める」という修正の形に整える手伝いもします。'
+            f'{f"いま公開されている提案は{n}件です。" if n else ""}</p><div class="arts">{rows}</div>'
+            f'<p class="note">条文は衆議院の議案本文情報（提出時の法律案）から取り込んだものです。</p>')
+
+
 def bill_page(b: dict, speeches: list[dict], topics: list[dict], recent: list[dict], n_public: int,
-              kc_url: str | None) -> str:
+              kc_url: str | None, arts: list[dict] | None = None) -> str:
     bid = b["id"]
     ex = json.loads(b.get("explain") or "[]")
     src_name = "参議院の議案要旨" if b.get("explain_source") == "要旨" else "法律案の本文の「理由」"
@@ -249,14 +281,15 @@ def bill_page(b: dict, speeches: list[dict], topics: list[dict], recent: list[di
 <p>AIが5問前後で、賛否・理由・暮らしへの影響・懸念・提案を聞きます。答えに合わせて質問を重ね、最後に「意見のまとめ」を作ります。まとめを確かめて同意したときだけ保存し、公開するかどうかも選べます。名前は聞きません。</p>
 <a class="btn" href="{BASE}/b/{h(bid)}/interview">AIインタビューを始める（約5分）</a></section>
 <section class="card"><h2>この法案で変わること <span class="pill g">AIによる要約</span></h2><ul class="ex">{exl}</ul>
-<p class="note">{h(src_name)}から、当社のサーバーの生成AI（gemma4）が作った要約です（{h('愛知の国会議員 発言ログ')}の法案ページと同じもの）。数字と日付は元の文と照らし合わせ、合わないものは載せていません。正確な内容は元の文書で確かめてください。{f'<a href="{h(src_url)}" rel="nofollow noopener" target="_blank">元の文書（PDF）</a>' if src_url else ''}</p></section>
+<p class="note">{h(src_name)}から、当社のサーバーの生成AI（gemma4）が作った要約です（{h('国会議員 発言ログ')}の法案ページと同じもの）。数字と日付は元の文と照らし合わせ、合わないものは載せていません。正確な内容は元の文書で確かめてください。{f'<a href="{h(src_url)}" rel="nofollow noopener" target="_blank">元の文書（PDF）</a>' if src_url else ''}</p></section>
 <section class="card"><h2>審議の経過</h2><table class="tl">{tl}</table>
 {'<p class="note">' + h(b['sessions'].replace(',', '・')) + '回の国会に出ています。表はいちばん新しい会期の経過です。</p>' if ',' in (b.get('sessions') or '') else ''}</section>
 <section class="card"><h2>国会での質疑・答弁</h2>{sp or '<p class="note">件名がそのまま出てくる発言は、まだ見つかっていません（委員会で審査されていない法案や、略称で呼ばれた発言は拾えていません）。</p>'}
-<p class="note">国会会議録検索システムで件名をそのまま引いた発言の抜粋です。<a href="{h(giin_url)}">法案ページ（愛知の国会議員 発言ログ）</a>で、審査している委員会の委員と、請願で意見を届ける方法も見られます。</p></section>
+<p class="note">国会会議録検索システムで件名をそのまま引いた発言の抜粋です。<a href="{h(giin_url)}">法案ページ（国会議員 発言ログ）</a>で、審査している委員会の委員と、請願で意見を届ける方法も見られます。</p></section>
 <section class="card"><h2>みんなの意見（話題）</h2>{topics_block(b, topics, recent, n_public)}</section>
+<section class="card" id="articles"><h2>条文と修正の提案</h2>{articles_block(b, arts or [])}</section>
 <section class="card"><h2>どこで割れて、どこで一致しているか</h2>{kc}</section>
-<section class="card"><h2>一次情報</h2><ul>{prim}<li><a href="{h(giin_url)}">愛知の国会議員 発言ログ：この法案のページ</a></li></ul></section>"""
+<section class="card"><h2>一次情報</h2><ul>{prim}<li><a href="{h(giin_url)}">国会議員 発言ログ：この法案のページ</a></li></ul></section>"""
     title = f"{short_name(b, 19)}への意見｜AIインタビュー"
     desc = (f"{short_name(b, 40)}（{b['status']}）の要約と審議の経過、国会での質疑を読み、"
             f"AIインタビューで意見を伝えられます。公開された意見は話題に分けて表示します。")
@@ -425,3 +458,120 @@ def about_page(n_bills: int) -> str:
     return page("法案AIインタビューのしくみ｜Kurage",
                 "国会で審議中の法案の解説、AIインタビューでの意見の聞き取り、意見の話題へのまとめ、合意形成AIでの合意点の発見までを、自社のサーバーの生成AIで行うシステムの説明です。",
                 "/about", body, crumbs=[(NAME, f"{BASE}/"), ("このシステムについて", f"{BASE}/about")])
+
+
+# ── 条文と修正の提案（2026-10-15〜） ───────────────────────
+
+def _am_card(m: dict, link: bool = True) -> str:
+    head = f'<span class="k">{h(m["kind"])}</span> <span class="note">{h(jdate(m["created_at"][:10]))}</span>'
+    form = ""
+    if m.get("before") and m["kind"] in ("改める", "削る"):
+        form = f'<div class="s">「{h(m["before"])}」' + (f'を「{h(m["after"])}」に改める' if m["kind"] == "改める" else "を削る") + "</div>"
+    elif m.get("after") and m["kind"] == "加える":
+        form = f'<div class="s">加える規定：「{h(m["after"])}」</div>'
+    more = f'<p class="note" style="margin:4px 0 0">理由：{h(m["reason"])}</p>' if m.get("reason") else ""
+    lk = f' <a class="note" href="{BASE}/m/{h(m["id"])}">この提案のページ</a>' if link else ""
+    return f'<div class="am">{head}{form}<p style="margin:4px 0">{h(m["proposal"])}</p>{more}{lk}</div>'
+
+
+AMEND_JS = r"""<script>
+(function(){
+const D = document.body.dataset, API = location.pathname.split('/b/')[0] + '/api/';
+const $ = s => document.querySelector(s);
+async function call(path, body){
+  const r = await fetch(API + path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  let d = {}; try { d = await r.json(); } catch(e) {}
+  if (!r.ok) throw new Error(d.detail || ('エラー ' + r.status));
+  return d;
+}
+$('#ai').onclick = async () => {
+  const req = $('#req').value.trim();
+  if (!req) { alert('どう直してほしいかを書いてください'); return; }
+  $('#ai').disabled = true; $('#aiw').classList.remove('hide');
+  try {
+    const d = await call('amend/draft', {bill_id: D.bill, ord: +D.ord, request: req});
+    $('#kind').value = d.kind; $('#before').value = d.before; $('#after').value = d.after;
+    $('#sug').classList.remove('hide');
+    $('#sug-s').textContent = d.sentence || '（修正の形にはできませんでした。下の提案の文で伝えてください）';
+    $('#sug-n').textContent = d.note || '';
+    $('#sug-w').textContent = d.warning || '';
+    if (!$('#prop').value) $('#prop').value = (d.sentence ? d.sentence + ' ' : '') + (d.note || req);
+  } catch(e) { alert(e.message); }
+  $('#ai').disabled = false; $('#aiw').classList.add('hide');
+};
+$('#save').onclick = async () => {
+  if (!$('#prop').value.trim()) { alert('提案の文を書いてください'); return; }
+  if (!$('#consent').checked) { alert('内容を確かめて、保存に同意するチェックを入れてください'); return; }
+  const pub = document.querySelector('input[name=pub]:checked');
+  if (!pub) { alert('公開するかどうかを選んでください'); return; }
+  $('#save').disabled = true;
+  try {
+    const d = await call('amend/save', {bill_id: D.bill, ord: +D.ord, kind: $('#kind').value, before: $('#before').value,
+      after: $('#after').value, proposal: $('#prop').value, reason: $('#reason').value, want_public: pub.value === '1', consent: true});
+    $('#form').classList.add('hide'); $('#fin').classList.remove('hide');
+    $('#fin-msg').textContent = d.message; $('#fin-link').href = d.url;
+  } catch(e) { alert(e.message); $('#save').disabled = false; }
+};
+})();
+</script>"""
+
+
+def article_page(b: dict, a: dict, arts: list[dict], ms: list[dict], accepting: bool) -> str:
+    bid, o = b["id"], a["ord"]
+    idx = [x["ord"] for x in arts]
+    prev_ = arts[idx.index(o) - 1] if o in idx and idx.index(o) > 0 else None
+    next_ = arts[idx.index(o) + 1] if o in idx and idx.index(o) + 1 < len(arts) else None
+    nav = ('<p class="note">' + (f'<a href="{BASE}/b/{h(bid)}/a/{prev_["ord"]}">← {h(prev_["label"])}</a>　' if prev_ else "")
+           + f'<a href="{BASE}/b/{h(bid)}/#articles">条の一覧</a>'
+           + (f'　<a href="{BASE}/b/{h(bid)}/a/{next_["ord"]}">{h(next_["label"])} →</a>' if next_ else "") + "</p>")
+    lst = "".join(_am_card(m) for m in ms) or '<p class="note">まだ公開された提案はありません。</p>'
+    form = f"""<section class="card form" id="form"><h2>この条への修正を提案する</h2>
+<label class="l" for="req">どう直してほしいか（自由に）</label>
+<textarea id="req" rows="3" maxlength="400" placeholder="例：「努めるものとする」を「しなければならない」にして、義務にしてほしい"></textarea>
+<div class="row"><button class="btn o" id="ai" type="button">AIに修正の形に整えてもらう</button><span id="aiw" class="note hide">AIが考えています（10〜20秒）…</span></div>
+<div id="sug" class="sug hide"><b>修正の形（案）</b><p id="sug-s" style="margin:4px 0"></p><p id="sug-n" class="note" style="margin:0"></p><p id="sug-w" class="note" style="margin:4px 0 0;color:var(--warn)"></p></div>
+<label class="l" for="kind">修正の種類</label>
+<select id="kind"><option>改める</option><option>削る</option><option>加える</option><option>その他</option></select>
+<label class="l" for="before">直す前の語句（条文からそのまま。改める・削るとき）</label>
+<input type="text" id="before" maxlength="80">
+<label class="l" for="after">直した後の語句、または加える規定</label>
+<input type="text" id="after" maxlength="150">
+<label class="l" for="prop">提案の文（公開するときに出る文）</label>
+<textarea id="prop" rows="3" maxlength="600"></textarea>
+<label class="l" for="reason">理由（任意）</label>
+<textarea id="reason" rows="3" maxlength="600"></textarea>
+<div class="choice"><label><input type="radio" name="pub" value="1">公開してよい（この条のページに出ます）</label>
+<label><input type="radio" name="pub" value="0">公開しない（自分だけが見られるリンクで保存）</label>
+<label><input type="checkbox" id="consent">内容を確かめました。名前や連絡先は書いていません。保存に同意します</label></div>
+<button class="btn" id="save" type="button">提案を保存する</button>
+<p class="note">名前は聞きません。公開を選んでも、電話番号・メールアドレス・URL などの個人情報や、悪口・宣伝と判定されたものは公開しません。
+国会の公式の意見窓口ではありません（公式の方法は請願です）。</p></section>
+<section class="card hide" id="fin"><h2>保存しました</h2><p id="fin-msg"></p><p><a id="fin-link" class="btn o" href="#">提案のページを見る</a></p></section>""" \
+        if accepting else '<p class="note">この法案の審議は終わっているため、提案は受け付けていません。</p>'
+    body = f"""<p class="kick">ARTICLE · {h(b['title'][:40])}</p>
+<h1>{h(a['label'])}{h(a['heading'] or '')}</h1>
+<p class="note">{h(b['title'])}（{h(b['status'])}）{('・' + h(a['chapter'])) if a.get('chapter') and a['chapter'] != '附則' else ''}</p>
+{nav}
+<div class="jobun">{h(a['text'])}</div>
+<p class="note">出典：<a href="{h(a['source_url'])}" rel="nofollow noopener" target="_blank">衆議院 議案本文情報（提出時の法律案）</a></p>
+<section class="card"><h2>出された修正提案（{len(ms)}件）</h2>{lst}</section>
+{form}
+<p><a href="{BASE}/b/{h(bid)}/">法案のページへ戻る</a></p>"""
+    title = f"{short_name(b, 18)} {a['label']}{a['heading'] or ''}への修正提案"
+    desc = f"{short_name(b, 30)}の{a['label']}{a['heading'] or ''}の条文と、市民から出された修正の提案（{len(ms)}件）。この条への修正を提案できます。"
+    pg = page(title, desc, f"/b/{bid}/a/{o}", body, noindex=not ms, og_type="article",
+              crumbs=[(NAME, f"{BASE}/"), (short_name(b, 24), f"{BASE}/b/{bid}/"), (a["label"], f"{BASE}/b/{bid}/a/{o}")],
+              script=AMEND_JS if accepting else "")
+    return pg.replace("<body>", f'<body data-bill="{h(bid)}" data-ord="{o}">', 1)
+
+
+def amendment_page(m: dict, b: dict, a: dict, private: bool) -> str:
+    body = f"""<p class="kick">AMENDMENT · {h(b['title'][:40])}</p>
+<h1>{h(a['label'])}{h(a['heading'] or '')}への修正提案</h1>
+{'<p class="pill w">非公開（このリンクを知っている人だけが見られます）</p>' if private else ''}
+{_am_card(m, link=False)}
+<details><summary>この条の条文を見る</summary><div class="jobun">{h(a['text'])}</div></details>
+<p><a class="btn o" href="{BASE}/b/{h(b['id'])}/a/{a['ord']}">この条の提案をすべて見る</a></p>"""
+    return page(f"{a['label']}への修正提案｜{short_name(b, 20)}", m["proposal"][:90], f"/m/{m['id']}", body,
+                noindex=True, crumbs=[(NAME, f"{BASE}/"), (short_name(b, 24), f"{BASE}/b/{b['id']}/"),
+                                       (a["label"], f"{BASE}/b/{b['id']}/a/{a['ord']}")])

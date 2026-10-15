@@ -16,14 +16,16 @@
 | 荒らし対策 | 1回の答え600字・1回のインタビューで14回まで・回線ごとに開始6回/時・20回/日、全体300回/時。公開を選んだまとめは、電話・メール・郵便番号・URL の形と、gemma4 の判定（悪口・個人情報・宣伝）を通ったものだけ公開。判定できなければ公開しない | IP は塩つきハッシュだけ保存 |
 | 話題に束ねる | `scripts/build_topics.py`。公開の意見が5件以上の法案だけ。意見の組が前回と同じなら作り直さない | multilingual-e5-large（fastembed・CPU）＋KMeans（random_state 固定）＋gemma4（話題名・要約・論点）。kronten と同じ方式 |
 | 合意形成AIへ | `scripts/to_kconsensus.py --apply`。法案ごとに kconsensus の論点 `khouan-<法案ID>` を作り、話題の論点を渡す（ほぼ同文は埋め込みで、同じ主張かは gemma4 で判定。合わせて12本まで）。公開の意見を reaction（platform=AIインタビュー）として入れ、賛否の読み取りは kconsensus の `import_reactions.py --fill` | kronten の to_kconsensus.py と同じ型 |
-| 定期処理 | `scripts/refresh.py`（上の3つ）。kdeck のゴール `khouan-refresh` → rqdb4ai `kurage-video-worker` → `kurage_web/backend/khouan_jobs.py` | 1日6回・4時間あけ |
+| 条文への修正提案（2026-10-15〜） | `scripts/import_articles.py`。衆議院の議案本文情報（提出時の法律案・HTML）から条ごとに取り込む（番号の無い改正の文は「本則」、附則は「附則第◯条」。改正の文の中の書き換え後の条では切らない）。参議院のPDFしかない法案は取り込まず、PDFを案内する。条のページで市民が修正を提案し、AIが「第◯条中「A」を「B」に改める。」の形に整える手伝いをする。A は条文にある語句だけ使い、修正の文はプログラムで組み立てる。保存・公開の決まりは意見のまとめと同じ | gemma4（形に整えるところだけ） |
+| 定期処理 | `scripts/refresh.py`（上の3つ＋新しい法案の条文の取り込み）。kdeck のゴール `khouan-refresh` → rqdb4ai `kurage-video-worker` → `kurage_web/backend/khouan_jobs.py` | 1日6回・4時間あけ |
 
 ## 画面と API
 
 - `/` 審議中の法案の一覧（`?q=` で絞り込み）、`/b/<法案ID>/` 法案ページ（解説・インタビューへの入口・みんなの意見の話題・合意形成AI）、
-  `/b/<法案ID>/interview` インタビュー、`/r/<id>` 意見のまとめ（noindex。非公開のまとめは本人に渡す `?k=` 付きの URL でだけ見える）、`/about`
+  `/b/<法案ID>/interview` インタビュー、`/b/<法案ID>/a/<条の番号>` 条文と修正の提案（提案が無い条は noindex）、`/m/<id>` 提案1件（noindex）、`/r/<id>` 意見のまとめ（noindex。非公開のまとめは本人に渡す `?k=` 付きの URL でだけ見える）、`/about`
 - `sitemap.xml`・`robots.txt`・`llms.txt`・`ogp.png`
-- 公開・読み取り専用: `GET /api/bill/<法案ID>/summary`（公開の意見の件数・話題ごとの件数と代表的な意見・合意形成AIのページURL）、`GET /api/bills`。
+- 修正提案: `POST /api/amend/draft`（要望→修正の形・回線ごとに10回/時）、`POST /api/amend/save`（6回/時・20回/日）
+- 公開・読み取り専用: `GET /api/bill/<法案ID>/summary`（公開の意見の件数・話題ごとの件数と代表的な意見・合意形成AIのページURL・条ごとの修正提案の件数）、`GET /api/bills`。
   xb4g の `/giin/bill/<法案ID>` がサーバー側で読み、10分キャッシュして3つの枠を出す（`giin/lib/bills.php` の `g_bill_khouan`）
 
 ## 動かす

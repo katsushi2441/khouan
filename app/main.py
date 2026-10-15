@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
-from . import interview, llm, pages
+from . import amend, interview, llm, pages
 from .store import connect, init_db
 
 HERE = Path(__file__).resolve().parent
@@ -54,6 +54,8 @@ LIMITS = {                # 回線（IP のハッシュ）ごとの上限: (秒,
     "answer": [(3600, 90)],
     "report": [(3600, 12)],
     "save": [(3600, 6), (86400, 20)],
+    "amend_draft": [(3600, 10), (86400, 40)],   # 条文への修正提案：AIで形に整える
+    "amend_save": [(3600, 6), (86400, 20)],     # 条文への修正提案：保存
 }
 GLOBAL_START_PER_HOUR = 300   # 全体の上限（0.3 の GPU を守る）
 SESSION_TTL = 3 * 3600
@@ -118,6 +120,20 @@ def _topics(c, bid: str, examples: int = 3) -> list[dict]:
     return out
 
 
+def _articles(c, bid: str) -> list[dict]:
+    """条ごとに、公開された修正提案の件数をつけて"""
+    return [dict(r) for r in c.execute(
+        """SELECT a.*, (SELECT COUNT(*) FROM amendment m WHERE m.bill_id=a.bill_id AND m.ord=a.ord AND m.public=1 AND m.is_test=0) n_public
+           FROM article a WHERE a.bill_id=? ORDER BY a.ord""", (bid,))]
+
+
+def _article(c, bid: str, ord_: int) -> dict:
+    a = c.execute("SELECT * FROM article WHERE bill_id=? AND ord=?", (bid, ord_)).fetchone()
+    if not a:
+        raise HTTPException(404, "その条は取り込んでいません")
+    return dict(a)
+
+
 def _kc_url(c, bid: str) -> str | None:
     r = c.execute("SELECT kconsensus_slug FROM handoff WHERE bill_id=? AND statements>0", (bid,)).fetchone()
     return f"{KC_BASE}{r[0]}/" if r else None
@@ -157,7 +173,7 @@ def bill_page(bid: str):
     b = _bill(c, bid)
     sp = [dict(r) for r in c.execute("SELECT * FROM bill_speech WHERE bill_id=? ORDER BY date DESC, speech_id DESC", (bid,))]
     pubs = _public_reports(c, bid)
-    out = pages.bill_page(b, sp, _topics(c, bid), pubs[:10], len(pubs), _kc_url(c, bid))
+    out = pages.bill_page(b, sp, _topics(c, bid), pubs[:10], len(pubs), _kc_url(c, bid), _articles(c, bid))
     c.close()
     return out
 
@@ -198,6 +214,37 @@ def report_page(rid: str, k: str = ""):
     return pages.report_page(r, b, private)
 
 
+@app.get("/b/{bid}/a/{ord_}", response_class=HTMLResponse)
+def article_page(bid: str, ord_: int):
+    c = connect()
+    b = _bill(c, bid)
+    a = _article(c, bid, ord_)
+    arts = _articles(c, bid)
+    ms = [dict(r) for r in c.execute("""SELECT * FROM amendment WHERE bill_id=? AND ord=? AND public=1 AND is_test=0
+                                         ORDER BY created_at DESC""", (bid, ord_))]
+    c.close()
+    return pages.article_page(b, a, arts, ms, accepting=b["status"] in ACTIVE)
+
+
+@app.get("/m/{mid}", response_class=HTMLResponse)
+def amendment_page(mid: str, k: str = ""):
+    c = connect()
+    m = c.execute("SELECT * FROM amendment WHERE id=?", (mid,)).fetchone()
+    if not m:
+        c.close()
+        raise HTTPException(404, "その提案はありません")
+    m = dict(m)
+    if not m["public"] and not (k and m["view_key"] and secrets.compare_digest(k, m["view_key"])):
+        c.close()
+        return HTMLResponse(pages.page("公開されていない提案です", "", f"/m/{mid}",
+                                       f'<h1>この提案は公開されていません</h1><p><a href="{BASE}/">法案の一覧へ</a></p>', noindex=True),
+                            status_code=404)
+    b = _bill(c, m["bill_id"])
+    a = _article(c, m["bill_id"], m["ord"])
+    c.close()
+    return pages.amendment_page(m, b, a, private=not m["public"])
+
+
 @app.get("/ogp.png")
 def ogp():
     return FileResponse(HERE / "static" / "ogp.png", media_type="image/png",
@@ -218,6 +265,11 @@ def sitemap():
     lm = lambda *d: max([x for x in d if x] or ["2026-10-11"])[:10]  # noqa: E731
     top = lm(*[lm(r[1], r[2]) for r in rows])
     urls = [(f"{BASE}/", top), (f"{BASE}/about", "2026-10-11")] + [(f"{BASE}/b/{r[0]}/", lm(r[1], r[2])) for r in rows]
+    # 条のページは、公開された修正提案があるものだけ（中身の無いページを索引に出さない）
+    c = connect()
+    urls += [(f"{BASE}/b/{r[0]}/a/{r[1]}", lm(r[2])) for r in c.execute(
+        """SELECT bill_id, ord, MAX(substr(created_at,1,10)) FROM amendment WHERE public=1 AND is_test=0 GROUP BY bill_id, ord""")]
+    c.close()
     body = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             + "".join(f"<url><loc>{u}</loc><lastmod>{d}</lastmod></url>\n" for u, d in urls) + "</urlset>\n")
     return Response(body, media_type="application/xml")
@@ -282,6 +334,8 @@ def api_summary(bid: str):
         "topics_built_at": tps[0]["built_at"] if tps else None,
         "recent": [] if tps else [{"text": r["summary"], "url": f"{BASE}/r/{r['id']}"} for r in pubs[:3]],
         "kconsensus_url": _kc_url(c, bid),
+        "amendments": [{"article": a["label"], "heading": a["heading"], "proposals": a["n_public"],
+                        "url": f"{BASE}/b/{bid}/a/{a['ord']}"} for a in _articles(c, bid) if a["n_public"]],
         "note": "件数は公開に同意された意見の数（世論調査ではない）。話題の名前と要約は生成AIによる。",
     }
     c.close()
@@ -466,6 +520,92 @@ def save(sid: str, v: Save):
         else:
             msg = "公開せずに保存しました。下のリンクはあなたにだけ見えます（なくすと見られなくなります）。"
         return {"report_id": rid, "public": bool(public), "report_url": url, "message": msg}
+    finally:
+        c.close()
+
+
+# ── API（条文への修正提案） ─────────────────────────────
+
+class AmendDraft(BaseModel):
+    bill_id: str
+    ord: int
+    request: str
+
+
+class AmendSave(BaseModel):
+    bill_id: str
+    ord: int
+    kind: str
+    before: str = ""
+    after: str = ""
+    proposal: str
+    reason: str = ""
+    want_public: bool
+    consent: bool
+
+
+def _amend_target(c, bid: str, ord_: int) -> tuple[dict, dict]:
+    b = _bill(c, bid)
+    if b["status"] not in ACTIVE:
+        raise HTTPException(400, "この法案の審議は終わっています")
+    return b, _article(c, bid, ord_)
+
+
+@app.post("/api/amend/draft")
+def amend_draft(v: AmendDraft, req: Request):
+    text = " ".join(v.request.split())
+    if not text or len(text) > 400:
+        raise HTTPException(400, "要望は1〜400字で書いてください")
+    c = connect()
+    try:
+        b, a = _amend_target(c, v.bill_id, v.ord)
+        _limit(c, _hash(_ip(req)), "amend_draft")
+    finally:
+        c.close()
+    try:
+        return amend.draft(b, a, text)
+    except llm.LLMError:
+        raise HTTPException(503, "AIが混み合っています。時間をおいてからもう一度お試しください。")
+
+
+@app.post("/api/amend/save")
+def amend_save(v: AmendSave, req: Request):
+    if not v.consent:
+        raise HTTPException(400, "保存への同意が必要です")
+    proposal = " ".join(v.proposal.split())
+    reason = " ".join(v.reason.split())
+    if not proposal or len(proposal) > 600:
+        raise HTTPException(400, "提案は1〜600字で書いてください")
+    if len(reason) > 600:
+        raise HTTPException(400, "理由は600字までです")
+    kind = v.kind if v.kind in amend.KINDS else "その他"
+    before, after = " ".join(v.before.split())[:80], " ".join(v.after.split())[:150]
+    c = connect()
+    try:
+        b, a = _amend_target(c, v.bill_id, v.ord)
+        if before and not amend.in_text(before, a["text"]):
+            raise HTTPException(400, "「直す前の語句」が条文に見つかりません。条文からそのまま写してください。")
+        iph = _hash(_ip(req))
+        _limit(c, iph, "amend_save")
+        ok, why = True, ""
+        if v.want_public:
+            ok, why = interview.moderate("\n".join([proposal, reason, after]))
+        mid, key = secrets.token_hex(5), secrets.token_urlsafe(12)
+        public = 1 if (v.want_public and ok) else 0
+        with c:
+            c.execute("""INSERT INTO amendment (id, bill_id, ord, kind, before, after, proposal, reason, want_public,
+                         moderation, moderation_reason, public, view_key, ip_hash, is_test, model, created_at)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,datetime('now','localtime'))""",
+                      (mid, v.bill_id, v.ord, kind, before, after, proposal, reason, int(v.want_public),
+                       ("ok" if ok else "hidden") if v.want_public else "private", why, public, key, iph, llm.MODEL))
+        url = f"{BASE}/m/{mid}" + ("" if public else f"?k={key}")
+        if public:
+            msg = "公開しました。この条のページの「出された修正提案」に出ます。"
+        elif v.want_public:
+            msg = f"保存しましたが、公開の判定で止まったため公開していません（{why}）。下のリンクはあなたにだけ見えます。"
+        else:
+            msg = "公開せずに保存しました。下のリンクはあなたにだけ見えます（なくすと見られなくなります）。"
+        return {"amendment_id": mid, "public": bool(public), "url": url, "message": msg}
     finally:
         c.close()
 

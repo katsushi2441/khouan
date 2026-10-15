@@ -5,6 +5,7 @@
 - session / message はインタビューのやりとり。氏名は聞かない。IP はそのまま持たず、塩つきハッシュだけ（回数の上限に使う）。
 - report は本人が確認・同意して保存した「意見のまとめ」。公開は本人が選び、さらに荒らし・個人情報の判定を通ったものだけ。
 - topic / topic_member は公開に同意されたレポートを話題に束ねた結果（scripts/build_topics.py）。
+- article は法律案の本文を条ごとに、amendment はその条への修正提案（2026-10-15〜）。
 """
 from __future__ import annotations
 
@@ -63,6 +64,18 @@ CREATE TABLE IF NOT EXISTS topic_member (
 CREATE TABLE IF NOT EXISTS handoff (
   bill_id TEXT PRIMARY KEY, kconsensus_slug TEXT, statements INTEGER, reactions INTEGER, at TEXT
 );
+CREATE TABLE IF NOT EXISTS article (     -- 法律案の本文を条ごとに（scripts/import_articles.py・衆議院の議案本文情報）
+  bill_id TEXT, ord INTEGER, label TEXT, heading TEXT, chapter TEXT, text TEXT, source_url TEXT, imported_at TEXT,
+  PRIMARY KEY (bill_id, ord)
+);
+CREATE TABLE IF NOT EXISTS amendment (   -- 条文への修正提案。本人が同意して保存したものだけ。公開は本人が選び、判定を通ったものだけ
+  id TEXT PRIMARY KEY, bill_id TEXT, ord INTEGER,
+  kind TEXT,                      -- 改める / 削る / 加える / その他
+  before TEXT, after TEXT,        -- 「A」を「B」に（AI で整えたとき。A は条文に実際にある語句だけ）
+  proposal TEXT, reason TEXT,
+  want_public INTEGER, moderation TEXT, moderation_reason TEXT, public INTEGER, view_key TEXT,
+  ip_hash TEXT, is_test INTEGER DEFAULT 0, model TEXT, created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS hit (
   ip_hash TEXT, kind TEXT, at REAL
 );
@@ -70,6 +83,7 @@ CREATE INDEX IF NOT EXISTS msg_session ON message(session_id);
 CREATE INDEX IF NOT EXISTS report_bill ON report(bill_id);
 CREATE INDEX IF NOT EXISTS topic_bill ON topic(bill_id);
 CREATE INDEX IF NOT EXISTS hit_ip ON hit(ip_hash, kind, at);
+CREATE INDEX IF NOT EXISTS amend_bill ON amendment(bill_id, ord);
 """
 
 

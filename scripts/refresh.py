@@ -2,6 +2,7 @@
 """定期処理（kdeck のゴール khouan-refresh → rqdb4ai → kurage_web/backend/khouan_jobs.py から呼ぶ）。
 
 1. giin から審議中の法案を取り込み直す（新しい法案は聞く項目も作る。状態の変化も写す）
+1.5 新しい法案の条文を条ごとに取り込む（条文への修正提案のため。取り込み済みの法案は飛ばす）
 2. 公開に同意された意見を話題に束ね直す（意見の組が変わった法案だけ）
 3. 話題のある法案は、論点を合意形成AIへ渡し、賛否の読み取りを足す（kconsensus の import_reactions.py --fill）
 
@@ -27,6 +28,7 @@ def run(args, timeout):
 def main():
     out = {}
     out["import"] = run(["scripts/import_bills.py"], 1800)[0]
+    out["articles"] = run(["-m", "scripts.import_articles"], 1800)[-5:]
     topics = json.loads(run(["scripts/build_topics.py"], 3600)[-1])
     out["topics"] = topics
     built = [b["bill"] for b in topics["built"]]
