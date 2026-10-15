@@ -431,8 +431,9 @@ def answer(sid: str, a: Answer, req: Request):
             _say(c, sid, "user", last["qord"], "answer", text)
         msgs, followups = [], s["followups"]
         skipped = text.startswith("答えない")
-        # 深掘りは「理由」以降の基本の質問への答えにだけ。深掘りへの答えには重ねない
-        if (last["kind"] == "base" and not skipped and followups < MAX_FOLLOWUPS and qs[qi]["kind"] != "賛否"):
+        # 深掘りは基本の質問への答えにだけ。深掘りへの答えには重ねない。
+        # ORID の順（2026-10-15〜）では「理由」の質問が無いので、賛否の答えにも深掘り（そう考える理由）をかける
+        if (last["kind"] == "base" and not skipped and followups < MAX_FOLLOWUPS):
             f = interview.follow_up(bill, last["text"], text)
             if f:
                 msgs.append({"text": f})

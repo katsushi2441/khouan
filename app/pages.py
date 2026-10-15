@@ -207,7 +207,7 @@ def index(bills: list[dict], q: str = "") -> str:
 <div class="bills">{items}</div></section>
 <section class="card"><h2>しくみ</h2><div class="g3">
 <div class="card"><h3>1. 法案を読む</h3><p class="note">法律案の「理由」や議案要旨の要約、審議の経過、国会での質疑と答弁の抜粋を、出典つきで並べます。</p></div>
-<div class="card"><h3>2. AIに答える</h3><p class="note">賛否・理由・暮らしへの影響・懸念・提案を、5問前後で聞きます。答えに合わせて、AIが質問を重ねます。約5分です。</p></div>
+<div class="card"><h3>2. AIに答える</h3><p class="note">目に留まったこと・感じたこと・暮らしへの影響・賛否・提案の順に、5問前後で聞きます。答えに合わせて、AIが質問を重ねます。約5分です。</p></div>
 <div class="card"><h3>3. 意見が話題になる</h3><p class="note">公開に同意された意見を、<a href="{KRONTEN}#ref=khouan">論点AIマップ</a>と同じ方式で話題に束ね、<a href="{KCONSENSUS}#ref=khouan">合意形成AI</a>で賛否の割れ方を出します。</p></div>
 </div></section>
 <section class="card"><h2>よくある質問</h2><dl class="faq">{faq}</dl></section>
@@ -278,7 +278,7 @@ def bill_page(b: dict, speeches: list[dict], topics: list[dict], recent: list[di
 <p>{status_pill(b['status'])}<span class="pill g">{h(b['kind'])}</span></p>
 <p>{h(b['answer'])}</p>
 <section class="card cta"><h2 style="margin-top:0">この法案に意見を伝える（AIインタビュー）</h2>
-<p>AIが5問前後で、賛否・理由・暮らしへの影響・懸念・提案を聞きます。答えに合わせて質問を重ね、最後に「意見のまとめ」を作ります。まとめを確かめて同意したときだけ保存し、公開するかどうかも選べます。名前は聞きません。</p>
+<p>AIが5問前後で、目に留まったこと、感じたこと、暮らしへの影響、賛否、提案の順に聞きます。賛否は、事実と気持ちを聞いたあとにたずねます。答えに合わせて質問を重ね、最後に「意見のまとめ」を作ります。まとめを確かめて同意したときだけ保存し、公開するかどうかも選べます。名前は聞きません。</p>
 <a class="btn" href="{BASE}/b/{h(bid)}/interview">AIインタビューを始める（約5分）</a></section>
 <section class="card"><h2>この法案で変わること <span class="pill g">AIによる要約</span></h2><ul class="ex">{exl}</ul>
 <p class="note">{h(src_name)}から、当社のサーバーの生成AI（gemma4）が作った要約です（{h('国会議員 発言ログ')}の法案ページと同じもの）。数字と日付は元の文と照らし合わせ、合わないものは載せていません。正確な内容は元の文書で確かめてください。{f'<a href="{h(src_url)}" rel="nofollow noopener" target="_blank">元の文書（PDF）</a>' if src_url else ''}</p></section>
@@ -383,7 +383,7 @@ def interview_page(b: dict, n_q: int) -> str:
 <p class="note">{h(b['title'])}（{h(b['status'])}）。法案の要約と審議の経過は<a href="{BASE}/b/{h(bid)}/">法案ページ</a>で読めます。</p>
 <section class="card" id="intro"><h2>始める前に</h2>
 <ul class="ops">
-<li>AIが{n_q}問前後で、賛否・理由・暮らしへの影響・懸念・提案を聞きます。答えに合わせて、質問を重ねることがあります。</li>
+<li>AIが{n_q}問前後で、目に留まったこと・感じたこと・暮らしへの影響・賛否・提案の順に聞きます。答えに合わせて、質問を重ねることがあります。</li>
 <li><b>名前は聞きません。</b>答えの中に、氏名・住所・電話番号・勤務先など、個人が分かることを書かないでください。</li>
 <li>最後に「意見のまとめ」を作ります。<b>内容を確かめて同意したときだけ保存</b>します。公開するかどうかも選べます。</li>
 <li>公開を選んでも、悪口や個人情報などが含まれるとAIが判定した場合は公開しません。</li>
@@ -445,7 +445,7 @@ def about_page(n_bills: int) -> str:
 <p>国会で審議中の法案（いまは第222回国会の{n_bills}本）について、法案の解説・AIインタビューによる意見の聞き取り・意見の話題へのまとめ・合意点の発見までを、1つの流れで行うシステムです。チームみらいの「みらい議会」と同じ考え方を、当社の<a href="{GIIN}/#ref=khouan">国会の発言ログ</a>、<a href="{KRONTEN}#ref=khouan">論点AIマップ</a>、<a href="{KCONSENSUS}#ref=khouan">合意形成AI（合意点マップ）</a>と組み合わせて作りました。</p></section>
 <section class="card"><h2>流れ</h2><ol class="steps">
 <li><b>法案を読み込む</b>：参議院の議案情報と国会会議録から、法案の経過・要約・質疑の抜粋を取り込みます。要約は法律案の「理由」や議案要旨をAIが要約したもので、数字と日付は元の文と照らし合わせています。</li>
-<li><b>聞く項目を作る</b>：法案ごとに、要約から5問前後の質問（賛否・理由・影響・懸念・提案）をAIが作って保存します。</li>
+<li><b>聞く項目を作る</b>：法案ごとに、要約から5問前後の質問をAIが作って保存します。聞く順は、ファシリテーションの手法 ORID（事実→感じたこと→意味→決めること）にならい、目に留まったこと・感じたこと・暮らしへの影響・賛否・提案とします。先に賛否を聞くと、あとの答えがその立場の理由づけに寄りがちなためです。</li>
 <li><b>AIインタビュー</b>：答えに合わせて、AIが質問を重ねます。最後に意見のまとめを作り、本人が確かめて同意したときだけ保存します。公開するかどうかは本人が選びます。</li>
 <li><b>荒らし対策</b>：1回の答えは600字まで、同じ回線からは1時間に6回まで。公開を選んだまとめは、電話番号・メール・URLなどの形と、AIによる悪口・個人情報・宣伝の判定を通ったものだけを公開します。</li>
 <li><b>話題に束ねる</b>：公開されたまとめを multilingual-e5-large で意味の近さに変え、KMeans で話題に分け、話題の名前と要約をAIが付けます（論点AIマップと同じ方式）。新しい意見は定期処理で足します。</li>
