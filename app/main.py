@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
-from . import amend, interview, llm, pages
+from . import amend, ask, interview, llm, pages
 from .store import connect, init_db
 
 HERE = Path(__file__).resolve().parent
@@ -56,6 +56,7 @@ LIMITS = {                # 回線（IP のハッシュ）ごとの上限: (秒,
     "save": [(3600, 6), (86400, 20)],
     "amend_draft": [(3600, 10), (86400, 40)],   # 条文への修正提案：AIで形に整える
     "amend_save": [(3600, 6), (86400, 20)],     # 条文への修正提案：保存
+    "ask": [(3600, 20), (86400, 60)],           # 法案について質問する（2026-10-16）
 }
 GLOBAL_START_PER_HOUR = 300   # 全体の上限（0.3 の GPU を守る）
 SESSION_TTL = 3 * 3600
@@ -526,6 +527,31 @@ def save(sid: str, v: Save):
 
 
 # ── API（条文への修正提案） ─────────────────────────────
+
+class Ask(BaseModel):
+    bill_id: str
+    q: str
+
+
+@app.post("/api/ask")
+def ask_bill(v: Ask, req: Request):
+    """法案について質問する。材料はその法案の要約・条文・国会の質疑と答弁だけ（app/ask.py）"""
+    q = " ".join(v.q.split())
+    if not q or len(q) > ask.MAX_Q:
+        raise HTTPException(400, f"質問は1〜{ask.MAX_Q}字で書いてください")
+    c = connect()
+    try:
+        b = _bill(c, v.bill_id)
+        _limit(c, _hash(_ip(req)), "ask")
+        arts = [dict(r) for r in c.execute("SELECT * FROM article WHERE bill_id=? ORDER BY ord", (b["id"],))]
+        sp = [dict(r) for r in c.execute("SELECT * FROM bill_speech WHERE bill_id=? ORDER BY date DESC, speech_id DESC", (b["id"],))]
+    finally:
+        c.close()
+    try:
+        return ask.answer(b, q, ask.sources(b, arts, sp, BASE))
+    except llm.LLMError:
+        raise HTTPException(503, "AIが混み合っています。時間をおいてからもう一度お試しください。")
+
 
 class AmendDraft(BaseModel):
     bill_id: str

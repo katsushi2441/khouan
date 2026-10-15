@@ -282,6 +282,11 @@ def bill_page(b: dict, speeches: list[dict], topics: list[dict], recent: list[di
 <a class="btn" href="{BASE}/b/{h(bid)}/interview">AIインタビューを始める（約5分）</a></section>
 <section class="card"><h2>この法案で変わること <span class="pill g">AIによる要約</span></h2><ul class="ex">{exl}</ul>
 <p class="note">{h(src_name)}から、当社のサーバーの生成AI（gemma4）が作った要約です（{h('国会議員 発言ログ')}の法案ページと同じもの）。数字と日付は元の文と照らし合わせ、合わないものは載せていません。正確な内容は元の文書で確かめてください。{f'<a href="{h(src_url)}" rel="nofollow noopener" target="_blank">元の文書（PDF）</a>' if src_url else ''}</p></section>
+<section class="card form" id="ask"><h2>この法案について質問する <span class="pill g">AIが記録から答えます</span></h2>
+<p class="note">答えの材料は、この法案の要約・条文・国会の質疑と答弁だけです。根拠の記録を必ず示し、記録に無いことには答えません。賛否や意見は言いません。</p>
+<textarea id="askq" rows="2" maxlength="200" placeholder="例：いつから始まりますか／だれが対象ですか／国はどんな義務を負いますか"></textarea>
+<p><button class="btn" id="askb" type="button">質問する</button> <span id="askw" class="note hide">記録を調べています（30秒ほど）…</span></p>
+<div id="aska" class="hide"><p id="askt"></p><ol id="askr" class="note"></ol></div></section>
 <section class="card"><h2>審議の経過</h2><table class="tl">{tl}</table>
 {'<p class="note">' + h(b['sessions'].replace(',', '・')) + '回の国会に出ています。表はいちばん新しい会期の経過です。</p>' if ',' in (b.get('sessions') or '') else ''}</section>
 <section class="card"><h2>国会での質疑・答弁</h2>{sp or '<p class="note">件名がそのまま出てくる発言は、まだ見つかっていません（委員会で審査されていない法案や、略称で呼ばれた発言は拾えていません）。</p>'}
@@ -293,8 +298,34 @@ def bill_page(b: dict, speeches: list[dict], topics: list[dict], recent: list[di
     title = f"{short_name(b, 19)}への意見｜AIインタビュー"
     desc = (f"{short_name(b, 40)}（{b['status']}）の要約と審議の経過、国会での質疑を読み、"
             f"AIインタビューで意見を伝えられます。公開された意見は話題に分けて表示します。")
-    return page(title, desc, f"/b/{bid}/", body, og_type="article",
-                crumbs=[(NAME, f"{BASE}/"), (short_name(b, 30), f"{BASE}/b/{bid}/")])
+    pg = page(title, desc, f"/b/{bid}/", body, og_type="article",
+              crumbs=[(NAME, f"{BASE}/"), (short_name(b, 30), f"{BASE}/b/{bid}/")], script=ASK_JS)
+    return pg.replace("<body>", f'<body data-bill="{h(bid)}">', 1)
+
+
+ASK_JS = r"""<script>
+(function(){
+const D = document.body.dataset, API = location.pathname.split('/b/')[0] + '/api/';
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('#askb').onclick = async () => {
+  const q = $('#askq').value.trim();
+  if (!q) { alert('質問を書いてください'); return; }
+  $('#askb').disabled = true; $('#askw').classList.remove('hide');
+  try {
+    const r = await fetch(API + 'ask', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bill_id: D.bill, q})});
+    let d = {}; try { d = await r.json(); } catch(e) {}
+    if (!r.ok) throw new Error(d.detail || ('エラー ' + r.status));
+    $('#askt').textContent = d.answer;
+    $('#askr').innerHTML = (d.refs || []).map(x => '<li>[' + esc(x.id) + '] ' + esc(x.kind) + '：' +
+      (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.label) + '</a>' : esc(x.label)) +
+      '<br>' + esc(x.excerpt) + '…</li>').join('');
+    $('#aska').classList.remove('hide');
+  } catch(e) { alert(e.message); }
+  $('#askb').disabled = false; $('#askw').classList.add('hide');
+};
+})();
+</script>"""
 
 
 # ── インタビュー画面 ──────────────────────────────────
